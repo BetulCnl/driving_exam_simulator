@@ -2,13 +2,15 @@
 
 Ehliyet direksiyon eğitimindeki dubalı park alıştırmasını tarayıcıda, otomatik vitesli bir araçla çalışmak için 3D simülatör. Duba kuralını adım adım öğretir, sonra sınav modunda kendini denemeni sağlar.
 
+**Canlı site:** https://betulcnl.github.io/driving_exam_simulator/
+
 Ekranın üst yarısında aracı kuş bakışı, alt yarısında sürücü koltuğundan görürsün. İkisi aynı anda, aynı hareketle ilerler.
 
 ![Genel görünüm: üstte kuş bakışı ve hamle listesi, altta sürücü görüşü](docs/genel-gorunum.jpg)
 
 ## Çalıştırma
 
-Kurulum gerekmez. `index.html` dosyasını tarayıcıda aç. three.js internetten yüklendiği için internet bağlantısı gerekir.
+En kolay yol yukarıdaki canlı siteyi açmaktır. Kendi bilgisayarında çalıştırmak için de kurulum gerekmez: `index.html` dosyasını tarayıcıda aç. three.js internetten yüklendiği için internet bağlantısı gerekir.
 
 Yerel sunucu ile açmak istersen:
 
