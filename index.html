@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dubalı Park Simülatörü</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <canvas id="scene"></canvas>
+  <div id="divider"></div>
+
+  <div id="ui">
+    <!-- ================= TOP HALF ================= -->
+    <aside id="panel" class="ctl">
+      <div class="panel-head">
+        <span id="panelMode" class="chip">Öğren</span>
+        <span id="panelScenario" class="panel-scn">Paralel Park</span>
+      </div>
+      <div id="panelBody"></div>
+    </aside>
+
+    <nav id="topbar" class="ctl">
+      <div class="seg" id="modeSeg">
+        <button data-mode="learn" class="on">Öğren</button>
+        <button data-mode="exam">Sınav</button>
+      </div>
+      <div class="seg" id="scnSeg">
+        <button data-scn="parallel" class="on">Paralel</button>
+        <button data-scn="perpendicular">Dik (garaj)</button>
+      </div>
+      <button id="btnReset" class="btn" title="Baştan başla (R)">↺ Baştan başla</button>
+      <button id="btnMute" class="btn icon" title="Ses aç / kapat">🔊</button>
+    </nav>
+
+    <div id="legend">
+      <span><kbd>W</kbd> gaz</span>
+      <span><kbd>Q</kbd> fren</span>
+      <span><kbd>A</kbd>/<kbd>D</kbd> direksiyon</span>
+      <span>🖱 tıkla: vites · sinyal</span>
+      <span title="Alttaki sürücü görüntüsünde fareyi basılı tutup sürükle; bıraktığın yerde kalır">🖱 basılı tut + sürükle: etrafa bak</span>
+      <span><kbd>Boşluk</kbd> / çift tık: öne bak</span>
+      <span><kbd>R</kbd> baştan</span>
+    </div>
+
+    <aside id="moveList" class="hidden" aria-label="Hamle listesi"></aside>
+
+    <div id="toast"></div>
+    <div id="cue" aria-live="polite"></div>
+
+    <!-- ================= BOTTOM HALF ================= -->
+    <div id="stalkWrap" class="ctl" title="Sinyal kolu: ▲ SAĞ / ▼ SOL yazısına tıkla ya da kolu yukarı (SAĞ) / aşağı (SOL) çek. Tekrar tıkla ya da kolun ortasına tıkla = sinyali kapat">
+      <div class="widget-label">SİNYAL KOLU</div>
+      <div id="stalkHitUp" class="stalk-hit up" title="Sağ sinyal (tekrar tıkla = kapat)">▲ SAĞ</div>
+      <div id="stalkArea" title="Kolu yukarı/aşağı sürükle · tıkla = sinyali kapat">
+        <div id="stalkBase"></div>
+        <div id="stalk"><div class="stalk-rod"></div><div class="stalk-tip"></div></div>
+      </div>
+      <div id="stalkHitDown" class="stalk-hit down" title="Sol sinyal (tekrar tıkla = kapat)">▼ SOL</div>
+    </div>
+
+    <div id="hud">
+      <div class="hud-block hud-steer">
+        <svg id="steerIcon" viewBox="-50 -50 100 100" width="54" height="54" aria-hidden="true">
+          <g id="steerRot">
+            <circle r="42" fill="none" stroke="currentColor" stroke-width="9"/>
+            <circle r="9" fill="currentColor"/>
+            <path d="M-38 6 L-9 4 M38 6 L9 4 M0 9 L0 40" stroke="currentColor" stroke-width="8" stroke-linecap="round"/>
+            <rect x="-4" y="-49" width="8" height="12" rx="2" fill="#ffb02e"/>
+          </g>
+        </svg>
+        <div class="hud-steer-txt"><div class="hud-cap">DİREKSİYON</div><div id="steerTxt" class="hud-val">DÜZ</div></div>
+      </div>
+      <div class="hud-block hud-main">
+        <div id="arrowL" class="turn-arrow">⬅</div>
+        <div class="speed"><span id="speedVal">0</span><small>km/h</small></div>
+        <div id="gearBig" class="gear-big">P</div>
+        <div id="arrowR" class="turn-arrow">➡</div>
+      </div>
+      <div class="hud-block hud-pedals">
+        <div id="pedGas" class="pedal" title="Gaz pedalı (W)"><span class="plab">GAZ <kbd>W</kbd></span><i class="pbar"><b id="pedGasFill" class="pfill"></b></i></div>
+        <div id="pedBrake" class="pedal brake" title="Fren pedalı (Q)"><span class="plab">FREN <kbd>Q</kbd></span><i class="pbar"><b id="pedBrakeFill" class="pfill"></b></i></div>
+      </div>
+      <div class="hud-block hud-look">
+        <button id="btnLook" class="btn look-btn ctl" type="button" title="Başını düz öne çevir (Boşluk ya da sürücü görüntüsüne çift tık)">⟲ Öne bak<small>Boşluk</small></button>
+      </div>
+    </div>
+
+    <div id="gearWrap" class="ctl" title="Otomatik vites: harfe tek tıkla ya da topuzu sürükle (P, R, N'den çıkarken ve D↔R için Q ile frene bas)">
+      <div class="widget-label">OTOMATİK VİTES</div>
+      <div id="gearGate">
+        <div class="gear-slot" data-g="P"><span>P</span></div>
+        <div class="gear-slot" data-g="R"><span>R</span></div>
+        <div class="gear-slot" data-g="N"><span>N</span></div>
+        <div class="gear-slot" data-g="D"><span>D</span></div>
+        <div id="gearTrack"></div>
+        <div id="gearKnob"><div class="knob-btn"></div></div>
+      </div>
+      <div id="gearLock" class="gear-lock">🔒 fren</div>
+    </div>
+
+    <!-- ================= OVERLAYS ================= -->
+    <div id="startScreen" class="overlay ctl">
+      <div class="card start-card">
+        <h1>Dubalı Park Simülatörü</h1>
+        <p class="lead">Ehliyet kursundaki <b>dubalı park</b> alıştırmasını otomatik vitesli bir araçla, adım adım
+          <b>duba kuralı</b> ile öğren. Üstte aracı kuş bakışı, altta sürücü koltuğundan görürsün: ön cam, iç ayna ve
+          iki yan ayna gerçekten çalışır. Önce <b>Öğren</b> modunda her adımı tek tek yap, sonra <b>Sınav</b> modunda kendini dene.</p>
+        <div class="cheat">
+          <div><kbd>W</kbd><span>Gaz (az kullan — rölanti yeter)</span></div>
+          <div><kbd>Q</kbd><span>Fren (basılı tut)</span></div>
+          <div><kbd>A</kbd> <kbd>D</kbd><span>Direksiyonu sola / sağa çevir — bırakınca olduğu yerde kalır</span></div>
+          <div><span class="ico">🕹</span><span>Vitese fareyle tıkla (P · R · N · D) — tek tık yeter</span></div>
+          <div><span class="ico">↕</span><span>Sinyal: ▲ SAĞ / ▼ SOL yazısına tıkla ya da kolu yukarı (sağ) / aşağı (sol) çek · ortaya tıkla = kapat</span></div>
+          <div><span class="ico">👀</span><span>Etrafa bakmak için alttaki sürücü görüntüsünde fareyi <b>BASILI TUTUP</b> sürükle · bıraktığın yerde kalır · çift tık / <kbd>Boşluk</kbd> = öne bak</span></div>
+        </div>
+        <div class="choose">
+          <div class="choose-col">
+            <div class="choose-cap">Alıştırma</div>
+            <label class="opt"><input type="radio" name="scn" value="parallel" checked><span><b>Paralel park</b><small>sağa, geri geri</small></span></label>
+            <label class="opt"><input type="radio" name="scn" value="perpendicular"><span><b>Geri geri dik park</b><small>garaj / cep park</small></span></label>
+          </div>
+          <div class="choose-col">
+            <div class="choose-cap">Mod</div>
+            <label class="opt"><input type="radio" name="mode" value="learn" checked><span><b>Öğren</b><small>adım adım, ipuçlu</small></span></label>
+            <label class="opt"><input type="radio" name="mode" value="exam"><span><b>Sınav</b><small>ipucu yok, değerlendirme</small></span></label>
+          </div>
+        </div>
+        <button id="btnStart" class="btn big">Başla ▶</button>
+        <p class="fine">Referans noktaları araç modeline ve koltuk ayarına göre değişir. Buradaki adımları yöntemin mantığı olarak öğren; gerçek araçta hocanın gösterdiği referansları kullan.</p>
+      </div>
+    </div>
+
+    <div id="resultCard" class="overlay ctl hidden">
+      <div class="card result">
+        <div id="resultHead" class="result-head"></div>
+        <ul id="resultList" class="result-list"></ul>
+        <div id="resultMoves" class="result-moves hidden"></div>
+        <p class="fine">Sınav benzeri değerlendirme — resmî sınav puanlaması değildir.</p>
+        <div class="result-btns">
+          <button id="btnMoves" class="btn ghost" type="button">Hamle listesini göster</button>
+          <button id="btnRetry" class="btn">↺ Tekrar dene</button>
+          <button id="btnToLearn" class="btn ghost">Öğren moduna dön</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="errorOverlay" class="overlay hidden">
+      <div class="card">
+        <h2>😕 Simülatör başlatılamadı</h2>
+        <p id="errorText"></p>
+        <button class="btn" onclick="location.reload()">Sayfayı yenile</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/carmodel.js"></script>
+  <script src="js/mirrors.js"></script>
+  <script src="js/world.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/physics.js"></script>
+  <script src="js/controls.js"></script>
+  <script src="js/lessons.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>

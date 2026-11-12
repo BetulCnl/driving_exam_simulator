@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>World test</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #111; font: 13px/1.35 system-ui, sans-serif; }
+  #scene { position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; display: block; }
+  #panel { position: fixed; left: 0; top: 0; width: 260px; height: 50vh; box-sizing: border-box; padding: 10px;
+    background: rgba(10,20,30,0.72); color: #e8eef4; overflow: auto; }
+  #hud { position: fixed; left: 0; right: 0; bottom: 0; height: 110px; background: rgba(0,0,0,0.35); color: #fff;
+    display: flex; align-items: center; justify-content: center; font-size: 15px; pointer-events: none; }
+  #info { white-space: pre; font: 12px/1.3 monospace; margin-top: 8px; color: #bfe; }
+  kbd { background: #234; padding: 0 4px; border-radius: 3px; }
+</style>
+</head>
+<body>
+<canvas id="scene"></canvas>
+<div id="panel">
+  <b>Grafik testi</b><br>
+  <kbd>Space</kbd> otomatik/manuel<br>
+  <kbd>↑</kbd><kbd>↓</kbd> ileri/geri, <kbd>←</kbd><kbd>→</kbd> direksiyon<br>
+  <kbd>A</kbd><kbd>D</kbd> baş yaw, <kbd>W</kbd><kbd>S</kbd> pitch<br>
+  <kbd>1</kbd> ön <kbd>2</kbd> sol ayna <kbd>3</kbd> sağ ayna <kbd>4</kbd> iç ayna <kbd>5</kbd> sol omuz <kbd>6</kbd> sağ omuz<br>
+  <kbd>Z</kbd>/<kbd>X</kbd>/<kbd>C</kbd> sinyal sol/sağ/kapalı, <kbd>B</kbd> fren<br>
+  <kbd>H</kbd> duba devir c2, <kbd>P</kbd> yol önizleme, <kbd>G</kbd> rehber, <kbd>L</kbd> vurgu<br>
+  <kbd>7</kbd> park pozisyonu, <kbd>8</kbd> başlangıç
+  <div id="info"></div>
+</div>
+<div id="hud">HUD şeridi (110 px)</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+  window.PS = window.PS || {};
+  PS.config = {
+    car: { length: 4.05, width: 1.75, height: 1.45, wheelbase: 2.58, rearOverhang: 0.65, frontOverhang: 0.82,
+      trackWidth: 1.50, wheelRadius: 0.31, maxSteerDeg: 35, steeringWheelLockDeg: 540, eye: { x: 0.37, y: 1.18, z: 1.25 } },
+    cone: { radius: 0.14, height: 0.50 },
+    scenarios: {
+      parallel: {
+        id: 'parallel', name: 'Paralel Park',
+        start: { x: -6, z: -0.9, heading: Math.PI / 2 },
+        cones: [
+          { id: 'c1', x: 0.0, z: 0.85 }, { id: 'c2', x: 6.5, z: 0.85 },
+          { id: 'c3', x: 0.0, z: 3.20 }, { id: 'c4', x: 6.5, z: 3.20 }
+        ],
+        lines: [
+          { x1: -25, z1: -4.0, x2: 30, z2: -4.0, color: 'yellow' },
+          { x1: -25, z1: -1.8 - 1.0, x2: 30, z2: -1.8 - 1.0, dashed: true },
+          { x1: 0, z1: 0.85, x2: 6.5, z2: 0.85, dashed: true }
+        ],
+        curbs: [{ x1: -25, z1: 3.35, x2: 30, z2: 3.35 }],
+        box: { corners: [{ x: 0, z: 0.85 }, { x: 6.5, z: 0.85 }, { x: 6.5, z: 3.35 }, { x: 0, z: 3.35 }] },
+        road: { xMin: -25, xMax: 30, zMin: -4.3, zMax: 3.35 },
+        topView: { cx: 2.5, cz: -0.4, width: 26, height: 9 }
+      }
+    }
+  };
+</script>
+<script src="../js/carmodel.js"></script>
+<script src="../js/mirrors.js"></script>
+<script src="../js/world.js"></script>
+<script>
+(function () {
+  var cfg = PS.config, scn = cfg.scenarios.parallel, car = cfg.car;
+  PS.world.init({ canvas: document.getElementById('scene') });
+  PS.world.loadScenario(scn);
+  var panel = document.getElementById('panel');
+  function insets() { PS.world.setTopInsets({ left: panel.offsetWidth, right: 0, top: 0, bottom: 0 }); }
+  insets(); window.addEventListener('resize', insets);
+
+  var st = {
+    car: { x: scn.start.x, z: scn.start.z, heading: scn.start.heading, speed: 0, steer: 0, steerAngle: 0, wheelRot: 0 },
+    gear: 'D', signal: 'right', blinkOn: false, brake: false, head: { yaw: 0, pitch: 0 }, time: 0
+  };
+  var auto = true, keys = {}, pathOn = true, guideOn = true, hlOn = true;
+  PS.world.highlightCones(['c2', 'c4'], 0xffe600);
+  var ghost = { x: 6.5 - 0.3 - 3.4 + 0.0, z: 2.1, heading: Math.PI / 2 };
+  ghost.x = 0.5 + 0.65;  // rear bumper 0.5 m inside the box
+  function guide() { PS.world.setGuide(guideOn ? { targetBox: true, ghost: ghost, line: { x1: -8, z1: -0.9, x2: 8, z2: -0.9 } } : null); }
+  guide();
+  PS.world.setPathPreview(pathOn);
+  window.__st = st;
+  window.__setAuto = function (a) { auto = a; };
+
+  addEventListener('keydown', function (e) {
+    keys[e.code] = true;
+    var h = st.head;
+    switch (e.code) {
+      case 'Space': auto = !auto; break;
+      case 'Digit1': h.yaw = 0; h.pitch = 0; break;
+      case 'Digit2': h.yaw = 0.62; h.pitch = -0.15; break;
+      case 'Digit3': h.yaw = -1.0; h.pitch = -0.1; break;
+      case 'Digit4': h.yaw = -0.62; h.pitch = 0.17; break;
+      case 'Digit5': h.yaw = 2.1; h.pitch = -0.05; break;
+      case 'Digit6': h.yaw = -2.1; h.pitch = -0.05; break;
+      case 'Digit7': auto = false; st.car.x = 0.65 + 0.4; st.car.z = 2.2; st.car.heading = Math.PI / 2; st.car.speed = 0; break;
+      case 'Digit8': auto = false; st.car.x = scn.start.x; st.car.z = scn.start.z; st.car.heading = scn.start.heading; break;
+      case 'KeyZ': st.signal = 'left'; break;
+      case 'KeyX': st.signal = 'right'; break;
+      case 'KeyC': st.signal = 'off'; break;
+      case 'KeyH': var hit = !(st._hit); st._hit = hit; PS.world.setConeHit('c2', hit); break;
+      case 'KeyP': pathOn = !pathOn; PS.world.setPathPreview(pathOn); break;
+      case 'KeyG': guideOn = !guideOn; guide(); break;
+      case 'KeyL': hlOn = !hlOn; PS.world.highlightCones(hlOn ? ['c2', 'c4'] : [], 0xffe600); break;
+    }
+  });
+  addEventListener('keyup', function (e) { keys[e.code] = false; });
+
+  var last = performance.now(), t0 = last, fpsAcc = 0, fpsN = 0, fps = 0;
+  var info = document.getElementById('info');
+  function loop(now) {
+    var dt = Math.min(0.05, (now - last) / 1000); last = now;
+    st.time = (now - t0) / 1000;
+    var c = st.car, maxS = car.maxSteerDeg * Math.PI / 180;
+    if (auto) {
+      var T = st.time;
+      var v = 1.4 * Math.sin(T * 0.35);
+      st.brake = Math.abs(v) < 0.25 || (Math.sin(T * 0.35) * Math.cos(T * 0.35) < 0 && Math.abs(v) < 0.8);
+      c.speed = v;
+      st.gear = v < 0 ? 'R' : 'D';
+      c.steer = Math.sin(T * 0.5);
+      st.head.yaw = 2.0 * Math.sin(T * 0.22); st.head.pitch = 0.1 * Math.sin(T * 0.5);
+      st.signal = (Math.floor(T / 4) % 3 === 0) ? 'left' : (Math.floor(T / 4) % 3 === 1 ? 'right' : 'off');
+    } else {
+      var acc = keys.ArrowUp ? 1 : keys.ArrowDown ? -1 : 0;
+      if (acc) c.speed = acc * 1.4; else c.speed *= 0.9;
+      if (Math.abs(c.speed) < 0.01) c.speed = 0;
+      st.gear = acc < 0 || c.speed < -0.01 ? 'R' : 'D';
+      st.brake = !!keys.KeyB;
+      if (keys.ArrowLeft) c.steer = Math.max(-1, c.steer - dt * 0.8);
+      if (keys.ArrowRight) c.steer = Math.min(1, c.steer + dt * 0.8);
+      if (keys.KeyA) st.head.yaw += dt * 1.5;
+      if (keys.KeyD) st.head.yaw -= dt * 1.5;
+      if (keys.KeyW) st.head.pitch += dt;
+      if (keys.KeyS) st.head.pitch -= dt;
+    }
+    c.steerAngle = c.steer * maxS;
+    var k = Math.tan(c.steerAngle) / car.wheelbase, ds = c.speed * dt;
+    var hm = c.heading - k * ds / 2;
+    c.x += ds * Math.sin(hm); c.z += ds * Math.cos(hm); c.heading -= k * ds;
+    c.wheelRot += ds / car.wheelRadius;
+    if (auto && (c.x > 14 || c.x < -14)) { c.x = scn.start.x; c.z = scn.start.z; c.heading = scn.start.heading; }
+    st.blinkOn = st.signal !== 'off' && (Math.floor(st.time * 3) % 2 === 0);
+
+    PS.world.render(st, dt);
+
+    fpsAcc += dt; fpsN++;
+    if (fpsAcc > 0.5) { fps = fpsN / fpsAcc; fpsAcc = 0; fpsN = 0; }
+    var m = ['left', 'right', 'center'].map(function (w) {
+      return w + ': ' + scn.cones.filter(function (cn) { return PS.world.isConeVisibleInMirror(cn.id, w); }).map(function (cn) { return cn.id; }).join(',');
+    }).join('\n');
+    info.textContent = (auto ? 'OTO' : 'MANUEL') + '  fps ' + fps.toFixed(0) +
+      '\nx ' + c.x.toFixed(2) + ' z ' + c.z.toFixed(2) + ' h ' + (c.heading * 180 / Math.PI).toFixed(1) +
+      '\nsteer ' + c.steer.toFixed(2) + ' gear ' + st.gear + ' sig ' + st.signal +
+      '\nyaw ' + st.head.yaw.toFixed(2) + ' pitch ' + st.head.pitch.toFixed(2) +
+      '\nfov ' + PS.world.getDriverFovDeg().toFixed(1) + ' dpr ' + PS.world.getDebug().dpr +
+      ' mirrorPasses ' + PS.world.getDebug().mirrorPasses + ' shadowEvery ' + PS.world.getDebug().q.shadowEvery + '\n' + m;
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
